@@ -13,6 +13,14 @@ const defaultOrigins = ['http://localhost:5173', 'http://localhost:3000', 'http:
 const allowedOrigins = getAllowedOrigins(process.env.CORS_ORIGIN, defaultOrigins);
 const allowAnyOrigin = allowedOrigins.includes('*');
 
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught exception:', error);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled rejection:', reason);
+});
+
 app.use(cors({
   origin(origin, callback) {
     if (allowAnyOrigin || !origin || allowedOrigins.includes(origin)) {
@@ -30,6 +38,24 @@ app.get('/api/health', (req, res) => {
     ok: true,
     message: 'API is running'
   });
+});
+
+app.get('/api/db/health', async (req, res) => {
+  try {
+    await pool.query('SELECT 1');
+
+    res.json({
+      ok: true,
+      message: 'Database connection is working'
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(503).json({
+      ok: false,
+      message: 'Database connection failed',
+      error: getPublicError(error)
+    });
+  }
 });
 
 app.post('/api/readings', async (req, res) => {
@@ -62,10 +88,7 @@ app.post('/api/readings', async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-    res.status(500).json({
-      ok: false,
-      message: 'Internal server error'
-    });
+    sendError(res, error);
   }
 });
 
@@ -80,10 +103,7 @@ app.get('/api/readings/latest', async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-    res.status(500).json({
-      ok: false,
-      message: 'Internal server error'
-    });
+    sendError(res, error);
   }
 });
 
@@ -98,10 +118,7 @@ app.get('/api/readings', async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-    res.status(500).json({
-      ok: false,
-      message: 'Internal server error'
-    });
+    sendError(res, error);
   }
 });
 
@@ -127,10 +144,7 @@ app.get('/api/monitoring/current', async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-    res.status(500).json({
-      ok: false,
-      message: 'Internal server error'
-    });
+    sendError(res, error);
   }
 });
 
@@ -171,10 +185,7 @@ async function reportHandler(req, res) {
     });
   } catch (error) {
     console.error(error);
-    res.status(500).json({
-      ok: false,
-      message: 'Internal server error'
-    });
+    sendError(res, error);
   }
 }
 
@@ -187,10 +198,7 @@ app.use((req, res) => {
 
 app.use((error, req, res, next) => {
   console.error(error);
-  res.status(500).json({
-    ok: false,
-    message: 'Internal server error'
-  });
+  sendError(res, error);
 });
 
 function isValidSensorValue(input, value) {
@@ -224,6 +232,47 @@ function getLimit(value, fallback, max) {
   }
 
   return Math.min(parsed, max);
+}
+
+function sendError(res, error) {
+  if (res.headersSent) {
+    return;
+  }
+
+  res.status(getErrorStatus(error)).json({
+    ok: false,
+    message: 'Internal server error',
+    error: getPublicError(error)
+  });
+}
+
+function getErrorStatus(error) {
+  const transientDatabaseCodes = new Set([
+    'ECONNREFUSED',
+    'ENOTFOUND',
+    'ETIMEDOUT',
+    'PROTOCOL_CONNECTION_LOST',
+    'HANDSHAKE_SSL_ERROR'
+  ]);
+
+  if (transientDatabaseCodes.has(error && error.code)) {
+    return 503;
+  }
+
+  return 500;
+}
+
+function getPublicError(error) {
+  if (process.env.NODE_ENV === 'production') {
+    return {
+      code: error && error.code ? error.code : 'INTERNAL_ERROR'
+    };
+  }
+
+  return {
+    code: error && error.code ? error.code : 'INTERNAL_ERROR',
+    message: error && error.message ? error.message : 'Unexpected error'
+  };
 }
 
 function getAllowedOrigins(value, fallback) {
