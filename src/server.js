@@ -69,12 +69,10 @@ app.post('/api/readings', async (req, res) => {
   }
 });
 
-app.get('/api/readings', async (req, res) => {
+app.get('/api/readings/latest', async (req, res) => {
   try {
     const limit = getLimit(req.query.limit, defaultRecentLimit, 200);
-    const [rows] = await pool.query(
-      `SELECT id, device_id AS deviceId, sensor_value AS sensorValue, status, created_at AS createdAt FROM sensor_readings ORDER BY created_at DESC, id DESC LIMIT ${limit}`
-    );
+    const rows = await getRecentReadings(limit);
 
     res.json({
       ok: true,
@@ -89,9 +87,60 @@ app.get('/api/readings', async (req, res) => {
   }
 });
 
-app.get('/api/reports', async (req, res) => {
+app.get('/api/readings', async (req, res) => {
   try {
-    const { type } = req.query;
+    const limit = getLimit(req.query.limit, defaultRecentLimit, 200);
+    const rows = await getRecentReadings(limit);
+
+    res.json({
+      ok: true,
+      data: rows
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      ok: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
+app.get('/api/monitoring/current', async (req, res) => {
+  try {
+    const rows = await getRecentReadings(1);
+    const current = rows[0] || null;
+
+    res.json({
+      ok: true,
+      data: {
+        current,
+        latestReading: current,
+        sensorValue: current ? current.sensorValue : null,
+        status: current ? current.status : 'unknown',
+        deviceId: current ? current.deviceId : null,
+        createdAt: current ? current.createdAt : null,
+        thresholds: {
+          warning: warningThreshold,
+          alarm: alarmThreshold
+        }
+      }
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      ok: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
+app.get('/api/reports', reportHandler);
+
+app.get('/api/reports/:type', reportHandler);
+
+async function reportHandler(req, res) {
+  try {
+    const type = req.params.type || req.query.type;
 
     if (!type) {
       return res.status(400).json({
@@ -127,7 +176,7 @@ app.get('/api/reports', async (req, res) => {
       message: 'Internal server error'
     });
   }
-});
+}
 
 app.use((req, res) => {
   res.status(404).json({
@@ -277,6 +326,14 @@ async function getByDay(whereSql, params) {
   return rows.map(formatDay);
 }
 
+async function getRecentReadings(limit) {
+  const [rows] = await pool.query(
+    `SELECT id, device_id AS deviceId, sensor_value AS sensorValue, status, created_at AS createdAt FROM sensor_readings ORDER BY created_at DESC, id DESC LIMIT ${limit}`
+  );
+
+  return rows;
+}
+
 async function getDailyReport(req, res) {
   const { date } = req.query;
 
@@ -376,9 +433,7 @@ async function getMonthlyReport(req, res) {
 
 async function getRecentReport(req, res) {
   const limit = getLimit(req.query.limit, Math.min(defaultRecentLimit, 50), 50);
-  const [rows] = await pool.query(
-    `SELECT id, device_id AS deviceId, sensor_value AS sensorValue, status, created_at AS createdAt FROM sensor_readings ORDER BY created_at DESC, id DESC LIMIT ${limit}`
-  );
+  const rows = await getRecentReadings(limit);
 
   const totalReadings = rows.length;
   const values = rows.map((row) => number(row.sensorValue));
