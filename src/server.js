@@ -9,21 +9,28 @@ const port = Number(process.env.PORT || 3000);
 const warningThreshold = Number(process.env.WARNING_THRESHOLD || 600);
 const alarmThreshold = Number(process.env.ALARM_THRESHOLD || 800);
 const defaultRecentLimit = getLimit(process.env.RECENT_LIMIT, 10, 200);
-const corsOrigin = process.env.CORS_ORIGIN;
-const defaultOrigins = ['http://localhost:5173', 'http://localhost:3000'];
-const allowedOrigins = corsOrigin ? [corsOrigin] : defaultOrigins;
+const defaultOrigins = ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:8100', 'http://127.0.0.1:8100'];
+const allowedOrigins = getAllowedOrigins(process.env.CORS_ORIGIN, defaultOrigins);
+const allowAnyOrigin = allowedOrigins.includes('*');
 
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (allowAnyOrigin || !origin || allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
 
-    return callback(new Error('CORS origin not allowed'));
+    return callback(null, false);
   }
 }));
 
 app.use(express.json());
+
+app.get('/api/health', (req, res) => {
+  res.json({
+    ok: true,
+    message: 'API is running'
+  });
+});
 
 app.post('/api/readings', async (req, res) => {
   try {
@@ -168,6 +175,32 @@ function getLimit(value, fallback, max) {
   }
 
   return Math.min(parsed, max);
+}
+
+function getAllowedOrigins(value, fallback) {
+  const origins = value
+    ? value.split(',').map((origin) => origin.trim()).filter(Boolean)
+    : fallback;
+  const normalizedOrigins = new Set();
+
+  for (const origin of origins) {
+    const normalizedOrigin = origin.replace(/\/$/, '');
+
+    if (normalizedOrigin === '*') {
+      normalizedOrigins.add(normalizedOrigin);
+      continue;
+    }
+
+    if (/^https?:\/\//i.test(normalizedOrigin)) {
+      normalizedOrigins.add(normalizedOrigin);
+      continue;
+    }
+
+    normalizedOrigins.add(`http://${normalizedOrigin}`);
+    normalizedOrigins.add(`https://${normalizedOrigin}`);
+  }
+
+  return [...normalizedOrigins];
 }
 
 function isValidDate(value) {
