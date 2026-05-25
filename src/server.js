@@ -62,6 +62,7 @@ app.post('/api/readings', async (req, res) => {
   try {
     const { deviceId = null, sensorValue } = req.body;
     const value = Number(sensorValue);
+    const normalizedDeviceId = normalizeDeviceId(deviceId);
 
     if (!isValidSensorValue(sensorValue, value)) {
       return res.status(400).json({
@@ -70,18 +71,32 @@ app.post('/api/readings', async (req, res) => {
       });
     }
 
+    if (normalizedDeviceId === undefined || normalizedDeviceId === null) {
+      return res.status(400).json({
+        ok: false,
+        message: 'deviceId is required and must be a positive integer'
+      });
+    }
+
     const status = req.body.status ? String(req.body.status) : getStatus(value);
 
+    if (!isValidStatus(status)) {
+      return res.status(400).json({
+        ok: false,
+        message: 'status must be normal, warning, or alarm'
+      });
+    }
+
     await pool.execute(
-      'INSERT INTO sensor_readings (device_id, sensor_value, status) VALUES (?, ?, ?)',
-      [deviceId, value, status]
+      'INSERT INTO sensor_readings (device_id, sensor_value, processed_value, risk_level, status) VALUES (?, ?, ?, ?, ?)',
+      [normalizedDeviceId, value, value, status, status]
     );
 
     res.json({
       ok: true,
       message: 'Reading saved',
       data: {
-        deviceId,
+        deviceId: normalizedDeviceId,
         sensorValue: value,
         status
       }
@@ -210,6 +225,24 @@ function isValidSensorValue(input, value) {
     typeof input === 'object' ||
     !Number.isFinite(value)
   );
+}
+
+function normalizeDeviceId(value) {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+
+  const parsed = Number(value);
+
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return undefined;
+  }
+
+  return parsed;
+}
+
+function isValidStatus(value) {
+  return ['normal', 'warning', 'alarm'].includes(value);
 }
 
 function getStatus(value) {

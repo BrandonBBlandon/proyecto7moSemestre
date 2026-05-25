@@ -15,14 +15,7 @@ async function main() {
   });
 
   try {
-    const [columns] = await connection.execute(
-      `SELECT COLUMN_NAME
-       FROM INFORMATION_SCHEMA.COLUMNS
-       WHERE TABLE_SCHEMA = ?
-         AND TABLE_NAME = 'sensor_readings'
-         AND COLUMN_NAME = 'status'`,
-      [process.env.DB_NAME]
-    );
+    const columns = await getColumns(connection, 'sensor_readings', 'status');
 
     if (columns.length === 0) {
       await connection.query(
@@ -45,6 +38,19 @@ async function main() {
   } finally {
     await connection.end();
   }
+}
+
+async function getColumns(connection, tableName, columnName) {
+  const [columns] = await connection.execute(
+    `SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = ?
+       AND TABLE_NAME = ?
+       AND COLUMN_NAME = ?`,
+    [process.env.DB_NAME, tableName, columnName]
+  );
+
+  return columns;
 }
 
 function getSslConfig() {

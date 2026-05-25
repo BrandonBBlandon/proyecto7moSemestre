@@ -5,6 +5,7 @@
   "main": "src/server.js",
   "scripts": {
     "dev": "nodemon src/server.js",
+    "db:migrate:sensor-readings": "node src/migrate-status-column.js",
     "db:migrate:status": "node src/migrate-status-column.js",
     "start": "node src/server.js"
   },
