@@ -87,6 +87,15 @@ app.post('/api/readings', async (req, res) => {
       });
     }
 
+    const deviceExists = await existsDevice(normalizedDeviceId);
+
+    if (!deviceExists) {
+      return res.status(400).json({
+        ok: false,
+        message: 'deviceId does not exist'
+      });
+    }
+
     await pool.execute(
       'INSERT INTO sensor_readings (device_id, sensor_value, processed_value, risk_level, status) VALUES (?, ?, ?, ?, ?)',
       [normalizedDeviceId, value, value, status, status]
@@ -243,6 +252,15 @@ function normalizeDeviceId(value) {
 
 function isValidStatus(value) {
   return ['normal', 'warning', 'alarm'].includes(value);
+}
+
+async function existsDevice(deviceId) {
+  const [rows] = await pool.execute(
+    'SELECT id FROM devices WHERE id = ? LIMIT 1',
+    [deviceId]
+  );
+
+  return rows.length > 0;
 }
 
 function getStatus(value) {
