@@ -223,7 +223,7 @@ async function getByDay(schema, from, to, options = {}) {
        COALESCE(AVG(${valueExpression}), 0) AS avgSmokeValue
      FROM ${table}
      WHERE ${rangeSql}
-     GROUP BY DATE(${createdAt})
+     GROUP BY DATE_FORMAT(${createdAt}, '%Y-%m-%d')
      ORDER BY date ASC`,
     [from, to]
   );
@@ -284,7 +284,7 @@ async function getIncidentTotals(schema, from, to, options = {}) {
        COALESCE(MAX(${maxValueExpression}), 0) AS maxSmokeValue
      FROM ${table}
      WHERE ${rangeSql}
-     GROUP BY DATE(${start})`,
+     GROUP BY DATE_FORMAT(${start}, '%Y-%m-%d')`,
     [from, to]
   );
 
